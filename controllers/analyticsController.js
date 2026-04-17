@@ -5,6 +5,7 @@ const predictionService = require('../services/predictionService');
 
 // In a real app, ERP connection details would come from a DB or request
 const ERP_BASE_URL = process.env.ERP_BASE_URL || 'http://localhost:5000';
+console.log('InsightIQ Backend connecting to ERP at:', ERP_BASE_URL);
 
 exports.getAnalytics = async (req, res) => {
   const { erpType } = req.query;
