@@ -63,8 +63,26 @@ const predictionService = {
     // 3. Sales Trend Analysis
     const totalSales = sales.reduce((acc, s) => acc + s.totalPrice, 0);
     if (totalSales > 0) {
+      // Top Selling Product detection
+      const productPerformance = sales.reduce((acc, s) => {
+        const name = s.productName || 'Unknown Product';
+        acc[name] = (acc[name] || 0) + s.quantity;
+        return acc;
+      }, {});
+
+      const topProduct = Object.entries(productPerformance).sort((a, b) => b[1] - a[1])[0];
+      if (topProduct && topProduct[1] > 20) {
+        insights.push({
+          type: 'sales',
+          product: topProduct[0],
+          prediction: `High demand pattern detected for ${topProduct[0]}`,
+          recommendation: `Consider increasing warehouse space for this SKU`,
+          severity: 'low' // Positive insight usually low severity
+        });
+      }
+
       const recentSales = sales.filter(s => new Date(s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-      if (recentSales.length < sales.length / 8) { // Arbitrary low sales detection
+      if (recentSales.length < sales.length / 8 && sales.length > 50) { 
         insights.push({
           type: 'sales',
           prediction: `Slowdown in sales volume detected this week`,
