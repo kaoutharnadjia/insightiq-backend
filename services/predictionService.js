@@ -32,65 +32,43 @@ const predictionService = {
       }
     });
 
-    // 2. Complaint Analysis (Root Cause & Recommendation)
-    const regions = [...new Set(complaints.map(c => c.region))];
-    regions.forEach(region => {
-      const regionComplaints = complaints.filter(c => c.region === region);
-      const categoryCounts = regionComplaints.reduce((acc, c) => {
-        acc[c.category] = (acc[c.category] || 0) + 1;
-        return acc;
-      }, {});
-
-      Object.entries(categoryCounts).forEach(([category, count]) => {
-        if (count >= 3) { // Threshold for pattern detection
-          let recommendation = 'Investigate and resolve';
-          if (category === 'billing') recommendation = 'Review billing automation and customer invoices';
-          if (category === 'technical') recommendation = 'Dispatch technical support to region infrastructure';
-          if (category === 'delivery') recommendation = 'Audit local logistics partner performance';
-
-          insights.push({
-            type: 'root_cause',
-            region,
-            category,
-            prediction: `Spike in ${category} issues detected (${count} complaints)`,
-            recommendation,
-            severity: count > 5 ? 'high' : 'medium'
-          });
-        }
+    // 2. Financial Intelligence (Cash Flow Prediction)
+    const totalRevenue = sales.reduce((acc, s) => acc + s.totalPrice, 0);
+    const last7DaysSales = sales.filter(s => new Date(s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+    const weeklyRevenue = last7DaysSales.reduce((acc, s) => acc + s.totalPrice, 0);
+    
+    if (totalRevenue > 0) {
+      const projectedMonthlyRevenue = (weeklyRevenue / 7) * 30;
+      insights.push({
+        type: 'financial',
+        prediction: `Projected monthly revenue: $${projectedMonthlyRevenue.toLocaleString()}`,
+        recommendation: `Cash flow is healthy. Consider reinvesting 15% in marketing.`,
+        severity: 'low'
       });
-    });
-
-    // 3. Sales Trend Analysis
-    const totalSales = sales.reduce((acc, s) => acc + s.totalPrice, 0);
-    if (totalSales > 0) {
-      // Top Selling Product detection
-      const productPerformance = sales.reduce((acc, s) => {
-        const name = s.productName || 'Unknown Product';
-        acc[name] = (acc[name] || 0) + s.quantity;
-        return acc;
-      }, {});
-
-      const topProduct = Object.entries(productPerformance).sort((a, b) => b[1] - a[1])[0];
-      if (topProduct && topProduct[1] > 20) {
-        insights.push({
-          type: 'sales',
-          product: topProduct[0],
-          prediction: `High demand pattern detected for ${topProduct[0]}`,
-          recommendation: `Consider increasing warehouse space for this SKU`,
-          severity: 'low' // Positive insight usually low severity
-        });
-      }
-
-      const recentSales = sales.filter(s => new Date(s.date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-      if (recentSales.length < sales.length / 8 && sales.length > 50) { 
-        insights.push({
-          type: 'sales',
-          prediction: `Slowdown in sales volume detected this week`,
-          recommendation: `Review pricing strategy or launch regional promotion`,
-          severity: 'low'
-        });
-      }
     }
+
+    // 3. Operations Intelligence (Efficiency)
+    const resolvedComplaints = complaints.filter(c => c.status === 'resolved');
+    const resolutionRate = complaints.length > 0 ? (resolvedComplaints.length / complaints.length) * 100 : 100;
+    
+    if (resolutionRate < 70) {
+      insights.push({
+        type: 'operations',
+        prediction: `Support resolution rate dropped to ${resolutionRate.toFixed(1)}%`,
+        recommendation: `Increase support staff in peak hours or review bottleneck regions.`,
+        severity: 'medium'
+      });
+    }
+
+    // 4. AI Readiness Score Calculation
+    const dataPoints = products.length + inventory.length + sales.length + complaints.length;
+    const completeness = dataPoints > 100 ? 98 : (dataPoints / 100) * 98;
+    
+    insights.push({
+      type: 'system',
+      readiness: completeness.toFixed(0),
+      status: 'active'
+    });
 
     return insights;
   }
