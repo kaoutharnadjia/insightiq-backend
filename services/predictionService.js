@@ -41,7 +41,7 @@ const predictionService = {
       const projectedMonthlyRevenue = (weeklyRevenue / 7) * 30;
       insights.push({
         type: 'financial',
-        prediction: `Projected monthly revenue: $${projectedMonthlyRevenue.toLocaleString()}`,
+        prediction: `Projected monthly revenue: ${projectedMonthlyRevenue.toLocaleString()} DA`,
         recommendation: `Cash flow is healthy. Consider reinvesting 15% in marketing.`,
         severity: 'low'
       });

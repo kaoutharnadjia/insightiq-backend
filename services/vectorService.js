@@ -53,7 +53,7 @@ const vectorService = {
       // 3. Products
       products.forEach((p) => {
         documents.push({
-          content: `Product: ${p.name}, Category: ${p.category}, Price: $${p.price}.`,
+          content: `Product: ${p.name}, Category: ${p.category}, Price: ${p.price} DA.`,
           metadata: {
             erpType,
             dataType: "products",
@@ -77,7 +77,7 @@ const vectorService = {
       // 5. Sales
       sales.forEach((s) => {
         documents.push({
-          content: `Sale: Sold ${s.quantity} of ${s.productName || "product"} for $${s.totalPrice} on ${new Date(
+          content: `Sale: Sold ${s.quantity} of ${s.productName || "product"} for ${s.totalPrice} DA on ${new Date(
             s.date
           ).toLocaleDateString()}.`,
           metadata: {
