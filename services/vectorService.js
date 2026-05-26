@@ -91,7 +91,7 @@ const vectorService = {
       // 6. Complaints
       complaints.forEach((c) => {
         documents.push({
-          content: `Complaint: Customer ${c.customerId} reported "${c.issue}". Status: ${c.status}. Priority: ${c.priority}.`,
+          content: `Complaint: Customer ${c.customerId} reported "${c.description || c.issue}". Category: ${c.category}. Status: ${c.status}.`,
           metadata: {
             erpType,
             dataType: "complaints",
