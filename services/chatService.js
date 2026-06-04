@@ -4,7 +4,7 @@ const ERPClient = require("../erp-client/erpClient");
 const normalizer = require("../normalizers/normalizer");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const chatService = {
   /**
@@ -84,14 +84,42 @@ ${query}
 ### YOUR RESPONSE:
 `;
 
-      // 4. Generate response from Gemini
+      // 4. Generate response from Gemini with retry logic
       console.log("[Chat] Calling Gemini AI...");
-      const result = await model.generateContent(prompt);
+      let result;
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          result = await model.generateContent(prompt);
+          break; // Success, exit loop
+        } catch (apiError) {
+          retries++;
+          if (apiError.message?.includes("429") || apiError.message?.includes("Too Many Requests")) {
+            if (retries >= maxRetries) {
+              throw apiError; // Max retries reached, rethrow
+            }
+            const waitTime = retries * 2000; // Wait 2s, 4s, 6s
+            console.log(`[Chat] Rate limited, waiting ${waitTime/1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          } else {
+            throw apiError; // Not a rate limit error, rethrow immediately
+          }
+        }
+      }
+
       const response = await result.response;
       return response.text();
 
     } catch (error) {
       console.error("[Chat Service Error]:", error);
+      
+      // Friendly error responses based on error type
+      if (error.message?.includes("429") || error.message?.includes("Too Many Requests")) {
+        return "آسف، لقد تم إرسال الكثير من الطلبات حاليًا. الرجاء المحاولة مرة أخرى بعد دقيقتين.";
+      }
+      
       return `آسف، حدث خطأ أثناء معالجة طلبك. الرجاء المحاولة مرة أخرى لاحقًا. (خطأ: ${error.message})`;
     }
   }
