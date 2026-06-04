@@ -83,9 +83,11 @@ const normalizer = {
           return {
             _id: item.SalesOrderID,
             productId: item.MaterialID,
+            productName: item.MaterialName || 'Direct Sale',
             quantity: item.OrderQuantity,
             totalPrice: item.NetAmount,
-            date: item.SalesDate
+            date: item.SalesDate,
+            region: item.Region || 'North'
           };
         }
         return item;
