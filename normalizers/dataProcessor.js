@@ -18,13 +18,20 @@ const dataProcessor = {
     // Ensure numbers are numbers, dates are dates
     const standardized = { ...item };
     
-    if (standardized.price) standardized.price = Number(standardized.price);
-    if (standardized.quantity) standardized.quantity = Number(standardized.quantity);
-    if (standardized.totalPrice) standardized.totalPrice = Number(standardized.totalPrice);
+    // Make sure numeric fields are numbers with defaults
+    standardized.price = standardized.price !== undefined ? Number(standardized.price) : 0;
+    standardized.quantity = standardized.quantity !== undefined ? Number(standardized.quantity) : 0;
+    standardized.totalPrice = standardized.totalPrice !== undefined ? Number(standardized.totalPrice) : 0;
+    
+    // Dates
     if (standardized.date) standardized.date = new Date(standardized.date);
     if (standardized.createdAt) standardized.createdAt = new Date(standardized.createdAt);
+    if (standardized.updatedAt) standardized.updatedAt = new Date(standardized.updatedAt);
     
-    // Default region if missing
+    // Defaults for missing fields
+    if (!standardized.productName) {
+      standardized.productName = 'Direct Sale';
+    }
     if (standardized.region === undefined && (standardized.totalPrice || standardized.category)) {
       standardized.region = 'North'; 
     }
