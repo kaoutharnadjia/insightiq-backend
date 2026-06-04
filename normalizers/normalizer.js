@@ -111,6 +111,8 @@ const normalizer = {
         if (item.on_hand_quantity !== undefined) { // Inventory
           return {
             _id: item.inv_item_id,
+            productId: item.inv_item_id,
+            productName: item.item_description,
             quantity: item.on_hand_quantity,
             reorderLevel: item.reorder_point,
             updatedAt: item.last_update_date
@@ -120,9 +122,11 @@ const normalizer = {
           return {
             _id: item.order_number,
             productId: item.inventory_item_id,
+            productName: item.item_description || 'Direct Sale',
             quantity: item.ordered_quantity,
             totalPrice: item.extended_price,
-            date: item.order_date
+            date: item.order_date,
+            region: item.region || 'North'
           };
         }
         return item;
