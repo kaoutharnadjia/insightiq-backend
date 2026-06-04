@@ -13,28 +13,49 @@ exports.getAnalytics = async (req, res) => {
 
   try {
     // 1. Fetch data from ERP
+    console.log(`[Analytics] Fetching data for ERP: ${erpType}`);
     const [rawProducts, rawInventory, rawSales, rawComplaints] = await Promise.all([
       client.getProducts(),
       client.getInventory(),
       client.getSales(),
       client.getComplaints()
     ]);
+    
+    console.log(`[Analytics] Raw sales (first 2):`, JSON.stringify(rawSales.slice(0, 2), null, 2));
+    console.log(`[Analytics] Raw products (first 2):`, JSON.stringify(rawProducts.slice(0, 2), null, 2));
 
     // 2. Normalize and Process data
-    const products = dataProcessor.process(normalizer.normalize(rawProducts, erpType));
-    const inventory = dataProcessor.process(normalizer.normalize(rawInventory, erpType));
-    const sales = dataProcessor.process(normalizer.normalize(rawSales, erpType));
-    const complaints = dataProcessor.process(normalizer.normalize(rawComplaints, erpType));
+    const normalizedProducts = normalizer.normalize(rawProducts, erpType);
+    const normalizedInventory = normalizer.normalize(rawInventory, erpType);
+    const normalizedSales = normalizer.normalize(rawSales, erpType);
+    const normalizedComplaints = normalizer.normalize(rawComplaints, erpType);
+    
+    console.log(`[Analytics] Normalized sales (first 2):`, JSON.stringify(normalizedSales.slice(0, 2), null, 2));
+    
+    const products = dataProcessor.process(normalizedProducts);
+    const inventory = dataProcessor.process(normalizedInventory);
+    const sales = dataProcessor.process(normalizedSales);
+    const complaints = dataProcessor.process(normalizedComplaints);
+    
+    console.log(`[Analytics] Final sales (first 2):`, JSON.stringify(sales.slice(0, 2), null, 2));
 
     // 3. Generate Predictions & Recommendations
     const insights = predictionService.analyze(products, inventory, sales, complaints);
 
     // 4. Calculate KPIs
-    const totalSales = sales.reduce((acc, s) => acc + s.totalPrice, 0);
-    const totalQtySold = sales.reduce((acc, s) => acc + s.quantity, 0);
+    const totalSales = sales.reduce((acc, s) => {
+      const val = Number(s.totalPrice) || 0;
+      return acc + val;
+    }, 0);
+    const totalQtySold = sales.reduce((acc, s) => {
+      const val = Number(s.quantity) || 0;
+      return acc + val;
+    }, 0);
     const inventoryValue = inventory.reduce((acc, i) => {
-      const p = products.find(prod => prod._id === i.productId);
-      return acc + (i.quantity * (p?.price || 0));
+      const p = products.find(prod => String(prod._id) === String(i.productId));
+      const qty = Number(i.quantity) || 0;
+      const price = Number(p?.price) || 0;
+      return acc + (qty * price);
     }, 0);
 
     const resolutionRate = complaints.length > 0 
