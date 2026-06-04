@@ -1,6 +1,6 @@
 /**
  * Data Processing Module
- * Responsible for cleaning, deduplication, and standardizing data
+ * Now data is already unified, just make sure types are correct
  */
 const dataProcessor = {
   process: (data) => {
@@ -15,51 +15,29 @@ const dataProcessor = {
   },
 
   standardize: (item) => {
-    // Ensure numbers are numbers, dates are dates
     const standardized = { ...item };
     
-    // Only process numeric fields if they are expected for this item type
-    // Product: has name and category
-    if (standardized.name || standardized.category) {
-      if (standardized.price !== undefined && standardized.price !== null) {
-        standardized.price = Number(standardized.price);
-      } else {
-        standardized.price = 0;
-      }
+    // Ensure numeric types
+    if (standardized.price !== undefined && standardized.price !== null) {
+      standardized.price = Number(standardized.price);
     }
-    
-    // Inventory or Sale: has quantity
     if (standardized.quantity !== undefined && standardized.quantity !== null) {
       standardized.quantity = Number(standardized.quantity);
-    } else if (standardized.qty_available !== undefined) {
-      standardized.quantity = Number(standardized.qty_available);
-    } else {
-      standardized.quantity = 0;
     }
-    
-    // Sale: has totalPrice
     if (standardized.totalPrice !== undefined && standardized.totalPrice !== null) {
       standardized.totalPrice = Number(standardized.totalPrice);
-    } else if (standardized.price_total !== undefined) {
-      standardized.totalPrice = Number(standardized.price_total);
-    } else if (standardized.NetAmount !== undefined) {
-      standardized.totalPrice = Number(standardized.NetAmount);
-    } else if (standardized.extended_price !== undefined) {
-      standardized.totalPrice = Number(standardized.extended_price);
-    } else {
-      standardized.totalPrice = 0;
     }
     
-    // Dates
+    // Ensure dates
     if (standardized.date) standardized.date = new Date(standardized.date);
     if (standardized.createdAt) standardized.createdAt = new Date(standardized.createdAt);
     if (standardized.updatedAt) standardized.updatedAt = new Date(standardized.updatedAt);
     
-    // Defaults for missing fields
+    // Defaults if missing
     if (!standardized.productName) {
       standardized.productName = 'Direct Sale';
     }
-    if (standardized.region === undefined && (standardized.totalPrice || standardized.category)) {
+    if (!standardized.region && (standardized.totalPrice || standardized.category)) {
       standardized.region = 'North'; 
     }
 
