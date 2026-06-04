@@ -1,92 +1,159 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const KnowledgeBase = require("../models/KnowledgeBase");
-const vectorService = require("./vectorService");
+const ERPClient = require("../erp-client/erpClient");
+const normalizer = require("../normalizers/normalizer");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 const chatService = {
   /**
-   * Main RAG Flow: Query -> Retrieve -> Generate
+   * Main Dynamic Chat Flow: Live Data -> Understand Intent -> Generate Response
    */
   chat: async (query, erpType) => {
     try {
-      // 1. Generate embedding for the user query
-      const queryVector = await vectorService.generateEmbedding(query);
+      console.log(`[Chat] Processing query for ${erpType}: ${query}`);
 
-      // 2. Retrieve relevant documents using Vector Search
-      let contextDocs = [];
+      // 1. ALWAYS fetch LIVE ERP DATA first (no dependency on KnowledgeBase)
+      const client = new ERPClient(process.env.ERP_BASE_URL, erpType);
+      
+      let products = [], inventory = [], sales = [], complaints = [];
       
       try {
-        const count = await KnowledgeBase.countDocuments({ "metadata.erpType": erpType });
-        if (count === 0) {
-          return erpType === 'odoo' || erpType === 'sap' || erpType === 'oracle' 
-            ? "يبدو أنني لا أملك بيانات لهذا النظام بعد. يرجى الضغط على أيقونة التحديث (Sync) في الأعلى لجلب البيانات."
-            : "No data found. Please sync your ERP data first.";
-        }
-
-        contextDocs = await KnowledgeBase.aggregate([
-          {
-            "$vectorSearch": {
-              "index": "vector_index", 
-              "path": "vector",
-              "queryVector": queryVector,
-              "numCandidates": 100,
-              "limit": 10,
-              "filter": { "metadata.erpType": erpType }
-            }
-          }
+        const [productsRaw, inventoryRaw, salesRaw, complaintsRaw] = await Promise.all([
+          client.getProducts(),
+          client.getInventory(),
+          client.getSales(),
+          client.getComplaints()
         ]);
-      } catch (err) {
-        console.warn("Vector Search failed (likely missing index in Atlas). Falling back to basic search.");
-        contextDocs = await KnowledgeBase.find({ "metadata.erpType": erpType }).limit(5);
+
+        products = normalizer.normalize(productsRaw, erpType);
+        inventory = normalizer.normalize(inventoryRaw, erpType);
+        sales = normalizer.normalize(salesRaw, erpType);
+        complaints = normalizer.normalize(complaintsRaw, erpType);
+        
+        console.log(`[Chat] Live data loaded: ${products.length} products, ${inventory.length} inventory, ${sales.length} sales, ${complaints.length} complaints`);
+      } catch (dataErr) {
+        console.warn("[Chat] Could not fetch live ERP data:", dataErr.message);
       }
 
-      const contextText = contextDocs.map(doc => doc.content).join("\n");
+      // 2. Build comprehensive data summary for the AI
+      const dataSummary = buildDataSummary(products, inventory, sales, complaints);
 
-      // 3. Construct the prompt
+      // 3. Construct a dynamic, smart prompt
       const prompt = `
-        You are a specialized Risk Analyst and Business Forecaster for InsightIQ. 
-        Your goal is to answer questions about the ERP system data provided below, focusing heavily on forecasting, prediction, and risk analysis using quantitative and specialized methods.
-        
-        Guidelines:
-        - Use ONLY the provided context to answer. If the data is missing, state it clearly but offer to analyze the available fields.
-        - Focus your analysis on:
-          * **Forecasting / Predictions**: Estimate future sales trends, projected revenues, or inventory demand.
-          * **Risk Assessment**: Categorize risks (e.g., Stockout, Customer Churn, Financial Bottlenecks) as High, Medium, or Low severity.
-        - When appropriate, explicitly apply or reference specialized methods:
-          * **Sales Velocity**: Average units sold per day or week (e.g., total sales qty / time interval).
-          * **Stock Runway (Days to Stockout)**: Calculate \`Current Inventory / Daily Sales Velocity\` to forecast when stock will run out.
-          * **Safety Stock & Reorder Points**: Compare current inventory to reorder levels to flag immediate replenishment needs.
-          * **Moving Average Projection**: Project future sales based on past transaction patterns in the context.
-          * **Support & Service Risks**: Analyze complaints by category (billing, technical, delivery) and region (Alger, Oran, Constantine, etc.) to identify churn risk and operation bottlenecks.
-        - Answer in the same language as the user's question (Arabic or English).
-        - Use Markdown formatting for a premium look:
-          * Use **bold** for key metrics, risk levels, and names.
-          * Use bullet points or numbered lists for steps, warnings, or recommendation checklists.
-          * Use Markdown tables to compare metrics, show calculations (like Runway/Velocity), or list product statuses.
-          * Use ### headings for different sections (e.g., ### 1. التنبؤ بالطلب, ### 2. تحليل المخاطر).
-        - Be highly professional, quantitative, action-oriented, and concise.
-        
-        Context Data:
-        ${contextText}
-        
-        User Question:
-        ${query}
-        
-        Answer:
-      `;
+You are **InsightIQ Assistant**, a highly dynamic, intelligent business analyst and helper for enterprise ERP systems.
+
+---
+
+### YOUR ROLE:
+- **Understand User Intent**: First, figure out what the user is asking.
+  - If asking for analysis, forecasts, reports, or business insights → ACT AS A PROFESSIONAL RISK & FORECAST ANALYST.
+  - If asking casual questions, greetings, or simple help → RESPOND FRIENDLY AND CLEARLY.
+  - If unsure → ASK FOR CLARIFICATION.
+- **Use Live Data**: You always have access to the REAL-TIME ERP DATA provided below.
+- **Language**: Always answer in the EXACT SAME LANGUAGE the user used (Arabic or English).
+
+---
+
+### LIVE ERP DATA FOR ANALYSIS:
+${dataSummary}
+
+---
+
+### GUIDELINES FOR ANALYST MODE (when user asks for analysis/insights):
+1. **Be Quantitative & Specific**: Calculate actual numbers from the data provided.
+2. **Focus Areas**:
+   - **Sales & Revenue**: Total sales, average order value, monthly trends, top-selling products.
+   - **Inventory & Stock**: Stock levels, items below reorder point, stockout risk, inventory value.
+   - **Risks & Warnings**: Identify critical issues (e.g., "Laptop Pro is at 5 units - stockout risk HIGH!").
+   - **Complaints**: Analyze by category/region, resolution rate, customer churn risk.
+3. **Use Calculations**:
+   - Stock Runway = Current Inventory / (Total Qty Sold / Days of Data)
+   - Sales Velocity = Total Units / Days
+   - Inventory Value = Sum(Inventory Qty * Product Price)
+4. **Formatting**: Use Markdown, **bold**, bullet points, tables, and headings for clarity.
+
+---
+
+### USER QUESTION:
+${query}
+
+---
+
+### YOUR RESPONSE:
+`;
 
       // 4. Generate response from Gemini
+      console.log("[Chat] Calling Gemini AI...");
       const result = await model.generateContent(prompt);
       const response = await result.response;
       return response.text();
 
     } catch (error) {
-      console.error("Chat service error:", error);
-      throw error;
+      console.error("[Chat Service Error]:", error);
+      return `آسف، حدث خطأ أثناء معالجة طلبك. الرجاء المحاولة مرة أخرى لاحقًا. (خطأ: ${error.message})`;
     }
   }
 };
+
+/**
+ * Build a clean, structured data summary for the AI
+ */
+function buildDataSummary(products, inventory, sales, complaints) {
+  // Calculate key metrics
+  const totalRevenue = sales.reduce((sum, s) => sum + (Number(s.totalPrice) || 0), 0);
+  const totalQtySold = sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
+  const inventoryValue = inventory.reduce((sum, i) => {
+    const product = products.find(p => String(p._id) === String(i.productId));
+    return sum + ((Number(i.quantity) || 0) * (Number(product?.price) || 0));
+  }, 0);
+  
+  // Summarize products (top 5 by price)
+  const productSummary = products.slice(0, 10).map(p => 
+    `- ${p.name} (${p.category}): ${Number(p.price).toLocaleString()} DA`
+  ).join("\n");
+  
+  // Summarize sales (last 20)
+  const salesSummary = sales.slice(0, 20).map(s => 
+    `- ${s.productName || "Unknown"}: ${Number(s.quantity)} units for ${Number(s.totalPrice).toLocaleString()} DA (${new Date(s.date).toLocaleDateString()}, ${s.region || "N/A"})`
+  ).join("\n");
+  
+  // Summarize inventory (items with low stock)
+  const lowStockItems = inventory.filter(i => (Number(i.quantity) || 0) <= (Number(i.reorderLevel) || 0));
+  const inventorySummary = lowStockItems.length > 0 
+    ? `⚠️ LOW STOCK (${lowStockItems.length} items):
+${lowStockItems.slice(0, 10).map(i => `- ${i.productName || "Unknown"}: ${Number(i.quantity)} units (Reorder: ${i.reorderLevel})`).join("\n")}`
+    : "✅ All inventory levels are healthy.";
+  
+  // Summarize complaints
+  const complaintSummary = complaints.length > 0 
+    ? `- Total: ${complaints.length} complaints
+- Resolved: ${complaints.filter(c => c.status === "resolved").length}
+- By Category: ${Object.entries(complaints.reduce((acc, c) => { acc[c.category] = (acc[c.category] || 0) + 1; return acc; }, {})).map(([cat, count]) => `${cat}: ${count}`).join(", ")}`
+    : "No complaints recorded.";
+
+  return `
+**📊 KEY METRICS:**
+- Total Products: ${products.length}
+- Total Sales Transactions: ${sales.length}
+- Total Revenue: ${totalRevenue.toLocaleString()} DA
+- Total Quantity Sold: ${totalQtySold} units
+- Inventory Value: ${inventoryValue.toLocaleString()} DA
+- Days of Sales Data: ${sales.length > 0 ? Math.ceil((new Date() - new Date(sales[0]?.date)) / (1000 * 60 * 60 * 24)) : 0} days
+
+**📦 PRODUCTS:**
+${products.length > 0 ? productSummary : "No products available."}
+
+**🛒 INVENTORY STATUS:**
+${inventorySummary}
+
+**💰 RECENT SALES:**
+${sales.length > 0 ? salesSummary : "No sales recorded yet."}
+
+**⚠️ COMPLAINTS:**
+${complaintSummary}
+`;
+}
 
 module.exports = chatService;
