@@ -4,7 +4,7 @@ const ERPClient = require("../erp-client/erpClient");
 const normalizer = require("../normalizers/normalizer");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
 const chatService = {
   /**
@@ -96,15 +96,20 @@ ${query}
           break; // Success, exit loop
         } catch (apiError) {
           retries++;
-          if (apiError.message?.includes("429") || apiError.message?.includes("Too Many Requests")) {
-            if (retries >= maxRetries) {
-              throw apiError; // Max retries reached, rethrow
-            }
-            const waitTime = retries * 2000; // Wait 2s, 4s, 6s
-            console.log(`[Chat] Rate limited, waiting ${waitTime/1000}s...`);
+          if (retries >= maxRetries) {
+            throw apiError; // Max retries reached, rethrow
+          }
+          const retriable =
+            apiError.message?.includes("429") ||
+            apiError.message?.includes("503") ||
+            apiError.message?.includes("Too Many Requests") ||
+            apiError.message?.includes("high demand");
+          if (retriable) {
+            const waitTime = retries * 1000; // Wait 1s, 2s
+            console.log(`[Chat] Provider busy, waiting ${waitTime / 1000}s...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
           } else {
-            throw apiError; // Not a rate limit error, rethrow immediately
+            throw apiError; // Not a transient error, rethrow immediately
           }
         }
       }
@@ -116,8 +121,8 @@ ${query}
       console.error("[Chat Service Error]:", error);
       
       // Friendly error responses based on error type
-      if (error.message?.includes("429") || error.message?.includes("Too Many Requests")) {
-        return "آسف، لقد تم إرسال الكثير من الطلبات حاليًا. الرجاء المحاولة مرة أخرى بعد دقيقتين.";
+      if (error.message?.includes("429") || error.message?.includes("503") || error.message?.includes("Too Many Requests") || error.message?.includes("high demand")) {
+        return "آسف، نموذج الذكاء الاصطناعي مشغول حاليًا. الرجاء المحاولة مرة أخرى خلال دقيقة.";
       }
       
       return `آسف، حدث خطأ أثناء معالجة طلبك. الرجاء المحاولة مرة أخرى لاحقًا. (خطأ: ${error.message})`;
